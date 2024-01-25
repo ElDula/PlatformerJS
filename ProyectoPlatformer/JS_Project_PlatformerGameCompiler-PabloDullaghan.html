@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Document</title>
+	<style>
+		#mapOrg{
+			display: none;
+		}
+	</style>
+</head>
+<body>
+	<center>
+		<div id="mainDiv">
+			<button id="startGCompBtn" onclick="startGameComp()">Start Game Compilation</button>
+		</div>
+		<div id="mapOrg">
+			<div id="curMaps"></div>
+			<button onclick="addMap()">+</button>
+			<button onclick="compile()">Compile</button>
+			<table id="mapTable"></table>
+		</div>
+	</center>
+	<script>
+		var maps=[];
+
+		function startGameComp(){
+			document.getElementById('mainDiv').style.display='none';
+			document.getElementById('mapOrg').style.display='block';
+		}
+
+		function repaint(){
+			document.getElementById('mapTable').innerHTML = '';
+			for (let i = 0; i < maps.length; i++) {
+				let span = document.createElement('span');
+				let tr = document.createElement('tr');
+				let td = tr.appendChild(document.createElement('td'));
+				td.appendChild(span);
+				span.textContent = `${i} - ${maps[i].title}`;
+
+				let btUp = document.createElement('button');
+				btUp.setAttribute("class", "updown");
+				btUp.textContent = "↑";
+				btUp.onclick = function(){
+					moveUp(i);
+				};
+
+				let btDown = document.createElement('button');
+				btDown.setAttribute("class", "updown")
+				btDown.textContent = "↓";
+				btDown.onclick = function(){
+					moveDown(i);
+				};
+
+				let td2 = tr.appendChild(document.createElement('td'));
+				td2.appendChild(btUp);
+				let td3 = tr.appendChild(document.createElement('td'));
+				td3.appendChild(btDown);
+				document.getElementById("mapTable").appendChild(tr);
+			}
+		}
+
+		function addMap(){
+			let input = document.createElement('input');
+			input.type = 'file';
+			input.onchange = e => {
+				var file = e.target.files[0];
+				var reader = new FileReader();
+				reader.readAsText(file,'UTF-8');
+				reader.onload = readerEvent => {
+					maps.push({title: input.value.replace('C:\\fakepath\\', '').replace('.json', ''), map:readerEvent.target.result});
+					repaint();
+				}
+			}
+			input.click();
+		}
+
+		function moveUp(id){
+			if(id>0){
+				let extract=maps.splice(id, 1);
+				newMapOrder=[...maps.slice(0, id-1), extract[0], ...maps.slice(id-1)];
+				maps=newMapOrder;
+				repaint();
+			}
+		}
+		function moveDown(id){
+			if(id<maps.length){
+				let extract=maps.splice(id, 1);
+				newMapOrder=[...maps.slice(0, id+1), extract[0], ...maps.slice(id+1)];
+				maps=newMapOrder;
+				repaint();
+			}
+		}
+
+		function compile(){
+			if(maps.length>0){
+				console.log('COMPILED');
+				let jsonString='';
+				for (let i = 0; i < maps.length-1; i++) {
+					jsonString += maps[i].map;
+					jsonString += ' :::/::: ';
+				}
+				jsonString += maps[maps.length-1].map;
+				let link = document.createElement("a");
+				let file = new Blob([jsonString], {type: 'application/json'});
+				link.href = URL.createObjectURL(file);
+				link.download = "savedMap.json";
+				link.click();
+				URL.revokeObjectURL(link.href);
+			}
+		}
+	</script>
+</body>
+</html>

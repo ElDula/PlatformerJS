@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<title>Mouse Test</title>
+		<meta name="description" content="">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="">
+	</head>
+	<body>
+		<canvas  id="testCanvas" width="768" height="768" style="border:1px solid #000000;"></canvas>
+		<div></div>
+		<script>
+			var mouseDown = [0, 0, 0, 0, 0];
+			var mouseDownCount = 0;
+			document.getElementById('testCanvas').addEventListener("mousedown", (evt) => {
+				++mouseDown[evt.button];
+				++mouseDownCount;
+			});
+			document.getElementById('testCanvas').addEventListener("mouseup", (evt) => {
+				--mouseDown[evt.button];
+				--mouseDownCount;
+			});
+			setInterval(function() {
+				if(mouseDownCount){
+					for(var i = 0; i < mouseDown.length; ++i){
+						if(mouseDown[i]){
+							switch (i) {
+								case 0:
+									console.log("left mouse");
+									break;
+								case 1:
+									console.log("middle mouse");
+									break;
+								case 2:
+									console.log("right mouse");
+									break;
+								default:
+									console.log("none");
+									break;
+							}
+						}
+					}
+				}
+			}, 1000);
+		</script>
+	</body>
+</html>
+

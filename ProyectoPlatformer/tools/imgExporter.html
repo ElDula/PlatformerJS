@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<title></title>
+		<meta name="description" content="">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="">
+		<style>
+			body{
+				background-color: grey;
+			}
+		</style>
+	</head>
+	<body>
+		<canvas  id="mapCanvas" width="16" height="16" style="border:1px solid #000000;"></canvas>
+		<button onclick="exportPicture()">DOWNLOAD</button>
+		<script>
+			const mapCanvas = document.getElementById('mapCanvas');
+			const ctx = mapCanvas.getContext('2d');
+
+			const PI = Math.PI;
+			const TWO_PI = 2*Math.PI;
+
+			const tileSize = 16;
+			const miniTileS = Math.floor(tileSize/3);
+			
+			class Player{
+				constructor(x, y, color, type='player'){
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.color = color;
+					this.type = 'player'
+					this.width = (tileSize*317)/457;
+					this.height = tileSize;
+					this.img = new Image(this.width, this.height);
+					standing.src='IMG/standing.png';
+				}
+				moveBy(x, y){
+					this.positionReal.x+=x;
+					this.positionReal.y+=y;
+				}
+				moveTo(x, y){
+					this.positionReal.x=x;
+					this.positionReal.y=y;
+				}
+				repaint(image){
+					ctxPlayer.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctxPlayer.drawImage(image, this.positionReal.x, this.positionReal.y, this.width, this.height);
+				}
+				removeThis(){
+					ctxPlayer.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Tile{
+				constructor(x, y, type='wall', color='grey', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.color = color;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					ctx.fillStyle = this.color;
+					ctx.fillRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+				}
+				move(x, y){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					this.setPosition(x, y);
+					this.draw();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Goal{
+				constructor(x, y, type='goal', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					let tempPosX=this.positionReal.x;
+					let tempPosY=this.positionReal.y;
+					//console.log(`${tempPosX}, ${tempPosY}`);
+					let incMTileS=miniTileS+1;
+					for (let i = 0; i < 3; i++) {
+						if(i==0){
+							ctx.fillStyle = 'black';
+							ctx.fillRect(tempPosX, tempPosY+i*miniTileS, miniTileS, miniTileS);
+							ctx.fillRect(tempPosX+miniTileS+incMTileS, tempPosY+i*miniTileS, miniTileS, miniTileS);
+							ctx.fillStyle = 'white';
+							ctx.fillRect(tempPosX+miniTileS, tempPosY+i*miniTileS, incMTileS, miniTileS);
+						} else if(i==1) {
+							ctx.fillStyle = 'white';
+							ctx.fillRect(tempPosX, tempPosY+i*miniTileS, miniTileS, incMTileS);
+							ctx.fillRect(tempPosX+miniTileS+incMTileS, tempPosY+i*miniTileS, miniTileS, incMTileS);
+							ctx.fillStyle = 'black';
+							ctx.fillRect(tempPosX+miniTileS, tempPosY+i*miniTileS, incMTileS, incMTileS);
+						} else if(i==2) {
+							ctx.fillStyle = 'black';
+							ctx.fillRect(tempPosX, tempPosY+i*incMTileS, miniTileS, miniTileS);
+							ctx.fillRect(tempPosX+miniTileS+incMTileS, tempPosY+i*incMTileS, miniTileS, miniTileS);
+							ctx.fillStyle = 'white';
+							ctx.fillRect(tempPosX+miniTileS, tempPosY+i*incMTileS, incMTileS, miniTileS);
+						}
+					}
+				}
+				move(x, y){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					this.setPosition(x, y);
+					this.draw();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Pickup{
+				constructor(x, y, type='wallP', color='black', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.color = color;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, tileSize, tileSize);
+					ctx.save();
+					let gradient = ctx.createRadialGradient(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, 0, this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, tileSize/2);
+					gradient.addColorStop(0, 'rgba(255, 255, 255, 0.75)');
+					gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+					ctx.fillStyle = gradient;
+					ctx.arc(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, tileSize/2, 0, TWO_PI);
+					ctx.fill();
+					ctx.restore();
+					ctx.save();
+					ctx.translate(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2);
+					ctx.rotate(Math.PI/4);
+					ctx.fillStyle = this.color;
+					ctx.fillRect(-(tileSize/2)/4, -(tileSize/2)/4, tileSize/4, tileSize/4);
+					ctx.restore();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+
+			function exportPicture(){
+				let link = document.createElement('a');
+				link.href = mapCanvas.toDataURL('image/png');
+				link.download = 'export.png';
+				link.click();
+				URL.revokeObjectURL(link.href);
+				link.remove();
+			}
+			let tile = new Pickup(0, 0);
+			console.log(tile instanceof Tile);
+			tile.draw();
+		</script>
+	</body>
+</html>

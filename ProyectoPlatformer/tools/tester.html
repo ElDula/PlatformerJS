@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multiple Rotated Squares</title>
+  <style>
+    canvas {
+      border: 1px solid #000;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="myCanvas" width="400" height="400"></canvas>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      var canvas = document.getElementById("myCanvas");
+      var ctx = canvas.getContext("2d");
+
+      // Set the center point of the canvas
+      var centerX = canvas.width / 2;
+      var centerY = canvas.height / 2;
+
+      // Set the size of the square
+      var squareSize = 50;
+
+      // Set the rotation angles in radians
+      var rotationAngles = [Math.PI / 4, Math.PI / 3, -Math.PI / 6];
+
+      for (var i = 0; i < rotationAngles.length; i++) {
+        // Translate to the center of the square
+        ctx.translate(centerX, centerY);
+
+        // Rotate the canvas
+        ctx.rotate(rotationAngles[i]);
+
+        // Draw the square (centered after rotation)
+        ctx.fillRect(-squareSize / 2, -squareSize / 2, squareSize, squareSize);
+
+        // Reset transformations for the next square
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<title></title>
+		<meta name="description" content="">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="">
+		<style>
+			body{
+				background-color: darkgray;
+				margin: 2px;
+			}
+			#mapDiv{
+				z-index: 0;
+				position: relative;
+				width: fit-content;
+			}
+			#playerDiv{
+				z-index: 1;
+				position: absolute;
+				pointer-events: none;
+				top: 0;
+				left: 0;
+			}
+			#tileOptions{
+				top: 0;
+				display: inline-block;
+			}
+			#flexContainer{
+				display: flex;
+				align-items: flex-start;
+			}
+			.button {
+				float: left;
+				margin: 0 5px 0 0;
+				width: 100px;
+				height: 100px;
+				text-align: center;
+				position: relative;
+			}
+			.button label,
+			.button input {
+				display: block;
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+			}
+			.button input[type="radio"] {
+				opacity: 0.011;
+				z-index: 100;
+			}
+			.button input[type="radio"]:checked + label {
+				background: #2320be;
+				border-radius: 4px;
+				color: white;
+			}
+			.button label {
+				cursor: pointer;
+				z-index: 90;
+				line-height: 1.8em;
+				padding-top: 10px;
+				line-height: 1;
+			}
+			.button label br{
+				margin: 0;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="flexContainer">
+			<div id="mapDiv">
+				<canvas  id="mapCanvas" width="1376" height="928" style="border:1px solid #000000;"></canvas>
+				<div id="playerDiv">
+					<canvas id="playerCanvas" width="1376" height="928" style="border:1px solid #000000;"></canvas>
+				</div>
+			</div>
+			<div id="tileOptions">
+				<div class="button">
+					<input type="radio" id="player" name="tiles" />
+					<label class="btn btn-default" for="player"><img class="optionIMG" src="IMG/standing.png" height="64"><br>Player</label>
+				</div>
+				<div class="button">
+					<input type="radio" id="wall" name="tiles" checked />
+					<label class="btn btn-default" for="wall"><img class="optionIMG" src="IMG/wallBlock.png"><br>Wall</label>
+				</div>
+				<div class="button">
+					<input type="radio" id="bouncy" name="tiles" />
+					<label class="btn btn-default" for="bouncy"><img class="optionIMG" src="IMG/bouncyBlock.png"><br>Bouncy Tile</label>
+				</div>
+				<div class="button">
+					<input type="radio" id="death" name="tiles" />
+					<label class="btn btn-default" for="death"><img class="optionIMG" src="IMG/deathBlock.png"><br>Death Tile</label>
+				</div>
+				<div class="button">
+					<input type="radio" id="goal" name="tiles" />
+					<label class="btn btn-default" for="goal"><img class="optionIMG" src="IMG/goalBlock.png"><br>Goal</label>
+				</div><br>
+				<select id="tileColor">
+					<option value="black">Black</option>
+					<option value="white">White</option>
+					<option value="green">Green</option>
+					<option value="blue">Blue</option>
+					<option value="yellow">Yellow</option>
+				</select>
+				<br>
+				<button onclick="move()">TESTER</button>
+				<button onclick="saveMap()">SAVE</button>
+				<button onclick="loadMap()">LOAD</button>
+				<button onclick="tileReducer()">OPTIMIZE</button>
+			</div>
+		</div>
+		<script>
+			gridMap=new Map();
+			playerMap=new Map();
+
+			//CONSTANTS
+			const tileSize = 32;
+			const miniTileS = Math.floor(tileSize/3);
+
+			const PI = Math.PI;
+			const TWO_PI = 2*Math.PI;
+
+			const playerCanvas = document.getElementById('playerCanvas');
+			const ctxPlayer = playerCanvas.getContext('2d');
+
+			const mapCanvas = document.getElementById('mapCanvas');
+			const ctx = mapCanvas.getContext('2d');
+
+			
+			const standing = new Image(tileSize, tileSize);
+			standing.src='IMG/standingThin.png';
+			const runningRight = new Image(tileSize, tileSize);
+			runningRight.src='IMG/runningRight.gif';
+			const runningLeft = new Image(tileSize, tileSize);
+			runningLeft.src='IMG/standingThin.png';
+			
+
+			//CLASSES
+			class Player{
+				constructor(x, y, color, type='player'){
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.color = color;
+					this.type = 'player'
+					this.width = (tileSize*317)/457;
+					this.height = tileSize;
+					this.img = new Image(this.width, this.height);
+					standing.src='IMG/standingThin.png';
+				}
+				moveBy(x, y){
+					this.positionReal.x+=x;
+					this.positionReal.y+=y;
+				}
+				moveTo(x, y){
+					this.positionReal.x=x;
+					this.positionReal.y=y;
+				}
+				repaint(image){
+					ctxPlayer.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctxPlayer.drawImage(image, this.positionReal.x, this.positionReal.y, this.width, this.height);
+				}
+				removeThis(){
+					ctxPlayer.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Tile{
+				constructor(x, y, type='wall', color='grey', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.color = color;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				softCompare(object){
+					if(object instanceof Tile && object.type==this.type && object.color==this.color && object.width==this.width && object.height==this.height){
+						return true;
+					}
+					return false;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					ctx.fillStyle = this.color;
+					ctx.fillRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+				}
+				move(x, y){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					this.setPosition(x, y);
+					this.draw();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Goal{
+				constructor(x, y, type='goal', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					let tempPosX=this.positionReal.x;
+					let tempPosY=this.positionReal.y;
+					//console.log(`${tempPosX}, ${tempPosY}`);
+					let incMTileS=miniTileS+1;
+					for (let i = 0; i < 3; i++) {
+						if(i==0){
+							ctx.fillStyle = 'black';
+							ctx.fillRect(tempPosX, tempPosY+i*miniTileS, miniTileS, miniTileS);
+							ctx.fillRect(tempPosX+miniTileS+incMTileS, tempPosY+i*miniTileS, miniTileS, miniTileS);
+							ctx.fillStyle = 'white';
+							ctx.fillRect(tempPosX+miniTileS, tempPosY+i*miniTileS, incMTileS, miniTileS);
+						} else if(i==1) {
+							ctx.fillStyle = 'white';
+							ctx.fillRect(tempPosX, tempPosY+i*miniTileS, miniTileS, incMTileS);
+							ctx.fillRect(tempPosX+miniTileS+incMTileS, tempPosY+i*miniTileS, miniTileS, incMTileS);
+							ctx.fillStyle = 'black';
+							ctx.fillRect(tempPosX+miniTileS, tempPosY+i*miniTileS, incMTileS, incMTileS);
+						} else if(i==2) {
+							ctx.fillStyle = 'black';
+							ctx.fillRect(tempPosX, tempPosY+i*incMTileS, miniTileS, miniTileS);
+							ctx.fillRect(tempPosX+miniTileS+incMTileS, tempPosY+i*incMTileS, miniTileS, miniTileS);
+							ctx.fillStyle = 'white';
+							ctx.fillRect(tempPosX+miniTileS, tempPosY+i*incMTileS, incMTileS, miniTileS);
+						}
+					}
+				}
+				move(x, y){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					this.setPosition(x, y);
+					this.draw();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Pickup{
+				constructor(x, y, type, color, width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.color = color;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, tileSize, tileSize);
+					ctx.save();
+					let gradient = ctx.createRadialGradient(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, 0, this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, tileSize/2);
+					gradient.addColorStop(0, 'rgba(255, 255, 255, 0.75)');
+					gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+					ctx.fillStyle = gradient;
+					ctx.arc(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, tileSize/2, 0, TWO_PI);
+					ctx.fill();
+					ctx.restore();
+					ctx.save();
+					ctx.translate(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2);
+					ctx.rotate(Math.PI/4);
+					ctx.fillStyle = this.color;
+					ctx.fillRect(-(tileSize/2)/4, -(tileSize/2)/4, tileSize/4, tileSize/4);
+					ctx.restore();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+
+			//FUNCTIONS
+			function getMousePos(mapCanvas, event) {
+				let dist = mapCanvas.getBoundingClientRect();
+				let x = Math.floor((event.clientX - dist.left)/tileSize);
+				let y = Math.floor((event.clientY - dist.top)/tileSize);
+				return {x, y};
+			}
+			function move(){
+				let tempMap = new Map();
+				gridMap.forEach(tileObj => {
+					//console.log(tileObj);
+					let pos = tileObj.getPosition();
+					tileObj.move(pos.x/tileSize, (pos.y)/tileSize+1);
+					tempMap.set([tileObj.positionGrid.x, tileObj.positionGrid.y], tileObj);
+				});
+				ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.width);
+				gridMap.forEach(tileObj => {
+					tileObj.draw();
+				});
+				gridMap=tempMap;
+				//console.log(gridMap);
+			}
+			function tileReducer(){
+				/*
+				newGridMap=new Map();
+				let tilesInHeight=Math.floor(mapCanvas.height/tileSize);
+				let tilesInWidth=Math.floor(mapCanvas.width/tileSize);
+				//let nextTile=nextTile({x:0, y:0}, gridMap);
+				if(gridMap.get('0, 0') instanceof Tile){
+					newTileWidth=gridMap.get('0, 0').width;
+					let curPos={x:0, y:0};
+					while (checkNextH(curPos)) {
+						newTileWidth+=gridMap.get(`${curPos.x+1}, ${curPos.y}`);
+					}
+					let tempobj=gridMap.get('1, 0');
+					let newTile=new Tile(0, 0, tempobj.type, tempobj.color, newTileWidth, tempobj.height);
+					newGridMap.set(`${tempobj.x}, ${tempobj.y}`, newTile);
+				}
+				while (nextTile!=false) {
+					let nextTileText=`${nextTile.x}, ${nextTile.y}`;
+					if(nextTileText==nextTile()){
+
+					}
+					nextTile=nextTile();
+				}
+				//maybe useful
+				/*
+				verticalLoop:
+				for (let y = 0; y < array.length; y++) {
+					horizontalLoop:
+					for (let x = 0; x < array.length; x++) {
+						if(gridMap[`${x1+1}, ${y1}`] instanceof Tile){
+							firstTile=gridMap[`${x1+1}, ${y1}`];
+							break verticalLoop;
+						}
+					}
+				}
+				*/
+				ogTile=nextTile({x:0, y:0}, gridMap);
+				if(ogTile!=false){
+					makingTile=true;
+					mapRunner:
+						for (let j = ogTile.positionGrid.y; j < Math.floor(mapCanvas.height/tileSize); j++) {
+							for (let i = ogTile.positionGrid.x; i < Math.floor(mapCanvas.width/tileSize); i++) {
+								console.log(`${i}, ${j}`);
+								console.log(!(i==Math.floor(mapCanvas.width/tileSize)));
+								if(gridMap.get(`${i}, ${j}`) instanceof Tile && ogTile.softCompare(gridMap.get(`${i}, ${j}`)) && !(i==Math.floor(mapCanvas.width/tileSize))){
+									tempTile=gridMap.get(`${i}, ${j}`);
+									tempEndPos=tempTile.positionReal.x+tempTile.width;
+									gridMap.delete(`${i}, ${j}`);
+								} else {
+									makingTile=false;
+									newTile = new Tile(ogTile.positionGrid.x, ogTile.positionGrid.y, ogTile.type, ogTile.color, tempEndPos-ogTile.positionReal.x, ogTile.height);
+									ctx.clearRect(ogTile.positionReal.x, ogTile.positionReal.y, newTile.positionReal.x+newTile.width, newTile.positionReal.y+newTile.height);
+									newTile.draw();
+									gridMap.set(`${ogTile.positionGrid.x}, ${ogTile.positionGrid.y}`, newTile);
+									ogTile=nextTile({x:i, y:j}, gridMap);
+									console.log(ogTile);
+									if(ogTile==false){
+										break mapRunner;
+									}
+									i=ogTile.positionGrid.x;
+									j=ogTile.positionGrid.y;
+								}
+							}
+						}
+				} else {
+					alert('Nothing to optimize');
+				}
+			}
+			/*
+			constructor(x, y, type='wall', color='grey', width=tileSize, height=tileSize) {
+				this.positionGrid = {x: x, y: y};
+				this.positionReal = {x: x*tileSize, y: y*tileSize};
+				this.type = type;
+				this.color = color;
+				this.width = width;
+				this.height = height;
+			}
+			*/
+
+			/*
+			Save tile characteristics in variables (tiletype, color...)
+			And compare them with the next, if true on all save position plus width.
+			On false do {(prev_position + prev_width) - og_position} to get resulting tile
+			*/
+			/*
+			function nextTile(curPos, map){ //NOT FINISHED
+				let x=curPos.x;
+				let y=curPos.y;
+				curPosVal=map.get(`${x}, ${y}`);
+				//console.log(Math.floor(mapCanvas.width/tileSize));
+				//console.log(Math.floor(mapCanvas.height/tileSize));
+				//return;
+				while(!(curPosVal instanceof Tile) && !(curPos.x==Math.floor(mapCanvas.width/tileSize) && curPos.y==Math.floor(mapCanvas.height/tileSize))){
+					if(curPos.x==Math.floor(mapCanvas.width/tileSize) && !(curPos.y==Math.floor(mapCanvas.height/tileSize))){
+						curPos.y=curPos.y+1;
+						curPos.x=0;
+					}
+					curPos.x=curPos.x+1;
+					curPosVal=map.get(`${curPos.x}, ${curPos.y}`);
+					if(map.get(curPos) instanceof Tile){
+						break;
+					}
+				}
+				if(curPosVal instanceof Tile){
+					return curPosVal;
+				} else {
+					return false;
+				}
+			}
+			function checkNextH(curPos, map){
+				let curPosValue=map.get(`${curPos.x}, ${curPos.y}`);
+				let nextPosValue=map.get(`${curPos.x+1}, ${curPos.y}`);
+				if(nextPosValue instanceof Tile && nextPosValue.type==curPosValue.type){
+					return true;
+				}
+				return false;
+			}
+			function collisionCalc(){
+				let startType=gridMap['0, 0'].type;
+				let adyTile=gridMap[`${x1+1}, ${y1}`];
+				while(adyTile.getRealPosition.x<mapCanvas.width){
+					if(gridMap[`${x1}, ${y1}`] instanceof Tile){
+						var startX=x1;
+						var startY=y1;
+						while(adyTile instanceof Tile && adyTile.type==startType){
+							var endX=adyTile.positionReal.x+adyTile.width;
+							adyTile=gridMap[`${adyTile.positionGrid.x+1}, ${y1}`];
+						}
+					}
+				}
+
+
+				
+			}
+			*/
+			
+			function saveMap(){
+				let jsonString = `${JSON.stringify(Array.from(gridMap.entries()))} -/- ${JSON.stringify(Array.from(playerMap.entries()))}`;
+				let link = document.createElement("a");
+				let file = new Blob([jsonString], {type: 'application/json'});
+				link.href = URL.createObjectURL(file);
+				link.download = "savedMap.json";
+				link.click();
+				URL.revokeObjectURL(link.href);
+			}
+			function loadMap(){
+				let input = document.createElement('input');
+				input.type = 'file';
+				input.onchange = e => { 
+					var file = e.target.files[0];
+					var reader = new FileReader();
+					reader.readAsText(file,'UTF-8');
+					reader.onload = readerEvent => {
+						ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+						ctxPlayer.clearRect(0, 0, playerCanvas.width, playerCanvas.height);
+						let stringMaps = (readerEvent.target.result).split(' -/- ');
+						let gridString = stringMaps[0];
+						let loadArray = JSON.parse(gridString);
+						gridMap = new Map(loadArray.map(([key, value]) =>  {
+							if (!value || typeof value !== 'object') {
+								console.error(`Invalid entry for key ${key}. Skipping.`);
+								return [key, [undefined, undefined]];
+							}
+							let object;
+							switch (value.type) {
+								case 'wall':
+								case 'bouncy':
+								case 'death':
+									object = new Tile(value.positionGrid.x, value.positionGrid.y, value.type, value.color, value.width, value.height);
+									break;
+								case 'goal':
+									object = new Goal(value.positionGrid.x, value.positionGrid.y, value.type, value.width, value.height);
+									break;
+								case 'wallP':
+								case 'bouncyP':
+								case 'deathP':
+									object = new Pickup(value.positionGrid.x, value.positionGrid.y, value.type, value.color, value.width, value.height);
+									break;
+								default:
+									console.error(`Unsupported type for key ${key}: ${value.type}. Skipping.`);
+									return [key, [undefined, undefined]];
+							}
+
+							return [key, object];
+						}));
+						gridMap.forEach(tileObj => {
+							tileObj.draw();
+							//console.log("draw");
+						});
+						playerString = stringMaps[1];
+						loadArray = JSON.parse(playerString);
+						playerMap = new Map(loadArray.map(([key, value]) =>  {
+							if (!value || typeof value !== 'object') {
+								console.error(`Invalid entry for key ${key}. Skipping.`);
+								return [key, [undefined, undefined]];
+							}
+							let object;
+							switch (value.type) {
+								case 'player':
+									object = new Player(value.positionGrid.x, value.positionGrid.y, value.type, value.color, value.width, value.height);
+									break;
+								default:
+									console.error(`Unsupported type for key ${key}: ${value.type}. Skipping.`);
+									return [key, [undefined, undefined]];
+							}
+							return [key, object];
+						}));
+						playerMap.forEach(tileObj => {
+							tileObj.repaint(standing);
+						});
+					}
+				}
+				input.click();
+			}
+			function updateMouse(e) {
+				var mousePos = getMousePos(mapCanvas, e);
+				for(var i = 0; i < mouseDown.length; ++i){
+					if(mouseDown[i]){
+						let tempValueGrid = gridMap.get(`${mousePos.x}, ${mousePos.y}`);
+						let tempValuePlayer = playerMap.get(`${mousePos.x}, ${mousePos.y}`);
+						if (typeof tempValueGrid !== 'undefined') {
+							tempValueGrid.removeThis();
+							gridMap.delete(`${mousePos.x}, ${mousePos.y}`);
+						} else if(typeof tempValuePlayer !== 'undefined') {
+							tempValuePlayer.removeThis();
+							playerMap.delete(`${mousePos.x}, ${mousePos.y}`);
+						}
+						switch (i) {
+							case 0: //LEFT MOUSE
+								switch (type) {
+									case 'wall':
+										tile = new Tile(mousePos.x, mousePos.y, type, selectedColor);
+										break;
+									case 'bouncy':
+										tile = new Tile(mousePos.x, mousePos.y, type, 'lime');
+										break;
+									case 'death':
+										tile = new Tile(mousePos.x, mousePos.y, type, 'red');
+										break;
+									case 'player':
+										tile = new Player(mousePos.x, mousePos.y, selectedColor);
+										break;
+									case 'goal':
+										tile = new Goal(mousePos.x, mousePos.y);
+										break;
+									default:
+										tile = new Tile(mousePos.x, mousePos.y, 'UNDEFINED', 'grey');
+										break;
+								}
+								if(!(type=='player')){
+									tile.draw();
+									gridMap.set(`${mousePos.x}, ${mousePos.y}`, tile);
+								} else {
+									playerMap.set(`${mousePos.x}, ${mousePos.y}`, tile);
+									tile.repaint(standing);
+								}
+								break;
+							case 1: //MIDDLE MOUSE
+								switch (type) {
+									case 'wall':
+										pickup = new Pickup(mousePos.x, mousePos.y, 'wallP', selectedColor);
+										break;
+									case 'bouncy':
+										pickup = new Pickup(mousePos.x, mousePos.y, 'bouncyP', 'lime');
+										break;
+									case 'death':
+										pickup = new Pickup(mousePos.x, mousePos.y, 'deathP', 'red');
+										break;
+									default:
+										pickup = new Pickup(mousePos.x, mousePos.y, 'UNDEFINEDP', 'grey');
+										break;
+								}
+								pickup.draw();
+								gridMap.set(`${mousePos.x}, ${mousePos.y}`, pickup);
+								break;
+							case 2: //RIGHT MOUSE
+								break;
+							default:
+								//console.log("none");
+								break;
+						}
+					}
+				}
+			}
+
+			function intervalFunction() {
+				if (runner) {
+					requestAnimationFrame(intervalFunction);
+				}
+			}
+
+			//EVENTLISTENERS
+			/*
+				mapCanvas.addEventListener('click', function(event) {
+					let mousePos = getMousePos(mapCanvas, event);
+					let tempTile = new Tile(mousePos.x, mousePos.y)
+					tempTile.draw();
+					gridMap.set([mousePos.x, mousePos.y], tempTile);
+				});
+			*/
+			mapCanvas.addEventListener('contextmenu', (e) => {
+				e.preventDefault();
+			});
+			document.getElementById('tileColor').addEventListener('change', (e) => {
+				selectedColor=document.getElementById('tileColor').value;
+			});
+			mapCanvas.addEventListener('mousedown', (evt) => {
+				mapCanvas.addEventListener('mousemove', updateMouse);
+				++mouseDown[evt.button];
+				++mouseDownCount;
+				runner = true;
+				if(document.getElementById('wall').checked){
+					type = 'wall';
+				} else if(document.getElementById('bouncy').checked) {
+					type = 'bouncy';
+				} else if(document.getElementById('death').checked) {
+					type = 'death';
+				} else if(document.getElementById('player').checked) {
+					type = 'player';
+				} else if(document.getElementById('goal').checked) {
+					type = 'goal';
+				}
+				intervalFunction();
+			});
+			mapCanvas.addEventListener('mouseup', (evt) => {
+				--mouseDown[evt.button];
+				--mouseDownCount;
+				runner = false;
+				mapCanvas.removeEventListener('mousemove', updateMouse);
+			});
+
+			//VARIABLES
+			mouseDown = [0, 0, 0, 0, 0];
+			mouseDownCount = 0;
+
+			//RUNTIME
+			selectedColor = document.getElementById('tileColor').value;
+		</script>
+	</body>
+</html>

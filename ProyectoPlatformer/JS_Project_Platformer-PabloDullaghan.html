@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<title></title>
+		<meta name="description" content="">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" href="">
+		<style>
+			body{
+				background-color: darkgray;
+				margin: 2px;
+			}
+			#mapDiv{
+				z-index: 0;
+				position: relative;
+				width: fit-content;
+			}
+			#playerDiv{
+				z-index: 1;
+				position: absolute;
+				pointer-events: none;
+				top: 0;
+				left: 0;
+			}
+			#flexContainer{
+				display: flex;
+				align-items: flex-start;
+			}
+			#tileOptions{
+				top: 0;
+				display: inline-block;
+			}
+			#currentPickup{
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				flex-direction: column;
+				width: 200px;
+				height: 200px;
+				border-style: solid;
+				border-width: 1px;
+			}
+			#nextPickup, #prevPickup{
+				width: 45px;
+				height: 45px;
+				background-color: aqua;
+			}
+			#nextPickup, #selectedPickup{
+				margin-bottom: 5px;
+			}
+			#selectedPickup{
+				width: 100px;
+				height: 100px;
+				background-color: red;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="flexContainer">
+			<div id="mapDiv">
+				<canvas  id="mapCanvas" width="1376" height="928" style="border:1px solid #000000;"></canvas>
+				<div id="playerDiv">
+					<canvas id="playerCanvas" width="1376" height="928" style="border:1px solid #000000;"></canvas>
+				</div>
+			</div>
+			<div id="tileOptions">
+				<div id="currentPickup">
+					<div id="nextPickup"></div>
+					<div id="selectedPickup"></div>
+					<div id="prevPickup"></div>
+				</div>
+				<button id="loadBtn" onclick="loadMap()">LOAD</button>
+			</div>
+		</div>
+		<script>
+			gridMap=new Map();
+			pickupMap=new Map();
+			playerMap=new Map();
+
+			//CONSTANTS
+			const tileSize = 32;
+			const miniTileS = Math.floor(tileSize/3);
+
+			const PI = Math.PI;
+			const TWO_PI = 2*Math.PI;
+
+			const playerCanvas = document.getElementById('playerCanvas');
+			const ctxPlayer = playerCanvas.getContext('2d');
+
+			const mapCanvas = document.getElementById('mapCanvas');
+			const ctx = mapCanvas.getContext('2d');
+			
+			const delayFrames = 33.33;
+
+			const grav=tileSize*4/delayFrames;
+			const gravAccel=0.125;
+			const baseSpeed=-5;
+			
+
+			const playerWidthBalance=0.420131;
+			const playerHeightBalance=0.993435;
+
+			/*
+			const standing = new Image(tileSize, tileSize);
+			standing.src='IMG/standing.png';
+			const runningRight = new Image(tileSize, tileSize);
+			runningRight.src='IMG/runningRight.gif';
+			const runningLeft = new Image(tileSize, tileSize);
+			runningLeft.src='IMG/standing.png';
+			*/
+
+			//CLASSES
+			class Player{
+				constructor(x, y, color, type='player', width, height){
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.color = color;
+					this.type = 'player';
+					this.width = width*playerWidthBalance;
+					this.height = height*playerHeightBalance;
+				}
+				moveBy(x, y){
+					this.positionReal.x+=x;
+					this.positionReal.y+=y;
+				}
+				moveByResult(zone, x, y){
+					//console.log(ctx.isPointInPath(walls, this.positionReal.x+x, this.positionReal.y+y));
+					return !(ctx.isPointInPath(zone, this.positionReal.x+x, this.positionReal.y+y));
+				}
+				moveTo(x, y){
+					this.positionReal.x=x;
+					this.positionReal.y=y;
+				}
+				resetPosition(){
+					this.positionReal.x=this.positionGrid.x*tileSize;
+					this.positionReal.y=this.positionGrid.y*tileSize;
+				}
+				repaint(){
+					let standing = new Image(this.width, this.height);
+					standing.src='IMG/standingThin.png';
+					ctxPlayer.drawImage(standing, this.positionReal.x, this.positionReal.y, this.width, this.height);
+				}
+				removeThis(){
+					ctxPlayer.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Tile{
+				constructor(x, y, type='wall', color='grey', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.color = color;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					ctx.fillStyle = this.color;
+					var wall = new Path2D();
+					wall.rect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.fill(wall);
+					walls.addPath(wall);
+					if(this.type=='death'){
+						deathZone.addPath(wall);
+					}
+				}
+				freeplace(x, y){
+					this.positionReal.x=x;
+					this.positionReal.y=y;
+					this.draw();
+				}
+				move(x, y){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					this.setPosition(x, y);
+					this.draw();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Goal{
+				constructor(x, y, type='goal', width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.width = width;
+					this.height = height;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					let goal = new Image(this.width, this.height);
+					goal.src='IMG/goal.png';
+					ctx.drawImage(goal, this.positionReal.x, this.positionReal.y, this.width, this.height);
+				}
+				move(x, y){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					ctx.beginPath();
+					this.setPosition(x, y);
+					this.draw();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			class Pickup{
+				constructor(x, y, type, color, width=tileSize, height=tileSize) {
+					this.positionGrid = {x: x, y: y};
+					this.positionReal = {x: x*tileSize, y: y*tileSize};
+					this.type = type;
+					this.color = color;
+					this.width = width;
+					this.height = height;
+					//this.path=null;
+				}
+				setPosition(x, y){
+					this.positionGrid.x = x;
+					this.positionGrid.y = y;
+					this.positionReal.x = x*tileSize;
+					this.positionReal.y = y*tileSize;
+				}
+				getGridPosition(){
+					return this.positionGrid;
+				}
+				getRealPosition(){
+					return this.positionReal;
+				}
+				getType(){
+					return this.type;
+				}
+				draw() {
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, tileSize, tileSize);
+					ctx.save();
+					const pick = new Path2D();
+					let gradient = ctx.createRadialGradient(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, 0, this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, tileSize/2);
+					gradient.addColorStop(0, 'rgba(255, 255, 255, 0.75)');
+					gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+					ctx.fillStyle = gradient;
+					pick.rect(this.positionReal.x, this.positionReal.y, tileSize, tileSize);
+					ctx.arc(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2, tileSize/2, 0, TWO_PI);
+					ctx.fill();
+					ctx.restore();
+					ctx.save();
+					ctx.translate(this.positionReal.x+tileSize/2, this.positionReal.y+tileSize/2);
+					ctx.rotate(Math.PI/4);
+					ctx.fillStyle = this.color;
+					ctx.fillRect(-(tileSize/2)/4, -(tileSize/2)/4, tileSize/4, tileSize/4);
+					//this.path=pick;
+					pickupCols.addPath(pick);
+					pickups.set(`${this.positionGrid.x}, ${this.positionGrid.y}`, {path:pick, type:this.type, color:this.color, x:this.positionReal.x, y:this.positionReal.y, width:tileSize, height:tileSize});
+					ctx.restore();
+				}
+				removeThis(){
+					ctx.clearRect(this.positionReal.x, this.positionReal.y, this.width, this.height);
+					delete this;
+				}
+			}
+			/*
+			//Would be cool to use this but requires quite a bit of work
+			class Node{
+				constructor(LinkedList, value){
+					this.prev=null;
+					this.value=value;
+					this.next=null;
+					if(LinkedList!=null){
+						this.prev=LinkedList;
+						LinkedList.next=this;
+					}
+				}
+			}
+			*/
+			//FUNCTIONS
+			function move(){
+				let tempMap = new Map();
+				gridMap.forEach(tileObj => {
+					//console.log(tileObj);
+					let pos = tileObj.getPosition();
+					tileObj.move(pos.x/tileSize, (pos.y)/tileSize+1);
+					tempMap.set([tileObj.positionGrid.x, tileObj.positionGrid.y], tileObj);
+				});
+				ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.width);
+				gridMap.forEach(tileObj => {
+					tileObj.draw();
+				});
+				gridMap=tempMap;
+				//console.log(gridMap);
+			}
+			function loadMap(){
+				walls = new Path2D();
+				deathZone = new Path2D();
+				pickupCols = new Path2D();
+				pickups = new Map();
+				let input = document.createElement('input');
+				input.type = 'file';
+				input.onchange = e => { 
+					var file = e.target.files[0];
+					var reader = new FileReader();
+					reader.readAsText(file,'UTF-8');
+					reader.onload = readerEvent => {
+						ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+						ctxPlayer.clearRect(0, 0, playerCanvas.width, playerCanvas.height);
+						let stringMaps = (readerEvent.target.result).split(' -/- ');
+						let gridString = stringMaps[0];
+						let loadArray = JSON.parse(gridString);
+						gridMap = new Map(loadArray.map(([key, value]) =>  {
+							if (!value || typeof value !== 'object') {
+								console.error(`Invalid entry for key ${key}.`);
+								return [key, [undefined, undefined]];
+							}
+							let object;
+							switch (value.type) {
+								case 'wall':
+								case 'bouncy':
+								case 'death':
+									object = new Tile(value.positionGrid.x, value.positionGrid.y, value.type, value.color, value.width, value.height);
+									break;
+								case 'goal':
+									object = new Goal(value.positionGrid.x, value.positionGrid.y, value.type, value.width, value.height);
+									break;
+								case 'wallP':
+								case 'bouncyP':
+								case 'deathP':
+									object = new Pickup(value.positionGrid.x, value.positionGrid.y, value.type, value.color, value.width, value.height);
+									//pickups.set(`${value.positionGrid.x}, ${value.positionGrid.y}`, object);
+									break;
+								default:
+									console.error(`Unsupported type for key ${key}: ${value.type}.`);
+									return [key, [undefined, undefined]];
+							}
+
+							return [key, object];
+						}));
+						gridMap.forEach(tileObj => {
+							tileObj.draw();
+							console.log(tileObj);
+						});
+						playerString = stringMaps[1];
+						loadArray = JSON.parse(playerString);
+						playerMap = new Map(loadArray.map(([key, value]) =>  {
+							if (!value || typeof value !== 'object') {
+								console.error(`Invalid entry for key ${key}.`);
+								return [key, [undefined, undefined]];
+							}
+							let object;
+							switch (value.type) {
+								case 'player':
+									object = new Player(value.positionGrid.x, value.positionGrid.y, value.type, value.color, value.width, value.height);
+									break;
+								default:
+									console.error(`Unsupported type for key ${key}: ${value.type}.`);
+									return [key, [undefined, undefined]];
+							}
+							return [key, object];
+						}));
+						playerMap.forEach(tileObj => {
+							tileObj.repaint();
+						});
+					}
+				}
+				input.click();
+				document.getElementById('loadBtn').blur();
+			}
+			/*
+			function intervalFunction() {
+				if (runner) {
+					requestAnimationFrame(intervalFunction);
+				}
+			}
+			*/
+			function loadGame(){
+				let input = document.createElement('input');
+				input.type = 'file';
+				input.onchange = e => { 
+					var file = e.target.files[0];
+					var reader = new FileReader();
+					reader.readAsText(file,'UTF-8');
+					reader.onload = readerEvent => {
+						ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+						ctxPlayer.clearRect(0, 0, playerCanvas.width, playerCanvas.height);
+						var stringMaps = (readerEvent.target.result).split(' :::/::: ');
+					}
+				}
+				input.click();
+				document.getElementById('loadBtn').blur();
+			}
+
+			function game(){
+				playerMap.forEach((values, keys) => {
+					if((values.moveByResult(walls, xmovP-xmovM, 0)&&values.moveByResult(walls, xmovP-xmovM+values.width, 0))&&(values.moveByResult(walls, xmovP-xmovM, values.height)&&values.moveByResult(walls, xmovP-xmovM+values.width, values.height))){
+						//ctxPlayer.clearRect(values.positionReal.x, values.positionReal.y, values.width, values.height); //As long as there is only one player this is worse
+						ctxPlayer.clearRect(0, 0, playerCanvas.width, playerCanvas.height);
+						values.moveBy(xmovP-xmovM, 0);
+						values.repaint();
+					} else if(!((values.moveByResult(deathZone, xmovP-xmovM, 0)&&values.moveByResult(deathZone, xmovP-xmovM+values.width, 0))&&(values.moveByResult(deathZone, xmovP-xmovM, values.height)&&values.moveByResult(deathZone, xmovP-xmovM+values.width, values.height)))){
+						playerMap.forEach((values, keys) => {
+							values.resetPosition();
+							values.repaint();
+							ctxPlayer.clearRect(v.positionReal.x, v.positionReal.y, v.width, v.height);
+						});
+					}
+					ymov=baseSpeed*(jumpAccel-gravSpeed);
+					if(gravSpeed<5){
+						gravSpeed+=gravAccel;
+					}
+					if(values.moveByResult(walls, 0, ymov)&&values.moveByResult(walls, 0, ymov+values.height)){//Move player if destination is within bounds
+						//ctxPlayer.clearRect(values.positionReal.x, values.positionReal.y-6, values.width, values.height+10);
+						ctxPlayer.clearRect(0, 0, playerCanvas.width, playerCanvas.height);
+						values.moveBy(0, ymov);
+						values.repaint();
+					} else {
+						gravSpeed=0;
+						jumpAccel=0;
+						if(!(values.moveByResult(deathZone, 0, ymov)&&values.moveByResult(deathZone, 0, ymov+values.height))){
+							playerMap.forEach((v, k) => {
+								v.resetPosition();
+								v.repaint();
+								ctxPlayer.clearRect(v.positionReal.x, v.positionReal.y, v.width, v.height);
+							});
+						}
+					}
+					if(ctx.isPointInPath(pickupCols, values.positionReal.x, values.positionReal.y)){
+						let tempCols=new Path2D();
+						pickups.forEach((val, key) => {
+							if(ctx.isPointInPath(val.path, values.positionReal.x, values.positionReal.y)){
+								ctx.clearRect(val.x, val.y, val.width, val.height);
+								inventory.push(val);
+								pickups.delete(key);
+
+							} else {
+								let tempPath=new Path2D();
+								tempPath.rect(val.x, val.y, val.width, val.height);
+								tempCols.addPath(tempPath);
+							}
+						});
+						pickupCols=tempCols;
+					}
+				});
+			}
+
+			//EVENTLISTENERS
+			/*
+				mapCanvas.addEventListener('click', function(event) {
+					let mousePos = getMousePos(mapCanvas, event);
+					let tempTile = new Tile(mousePos.x, mousePos.y)
+					tempTile.draw();
+					gridMap.set([mousePos.x, mousePos.y], tempTile);
+				});
+			*/
+			mapCanvas.addEventListener('contextmenu', (e) => {
+				e.preventDefault();
+			});
+
+			window.addEventListener("keydown", (event) => {
+				if (event.code === 'KeyD') {
+					xmovP=5;
+					return;
+				}
+				if (event.code === 'KeyA') {
+					xmovM=5;
+					return;
+				}
+				if (event.code === 'Space') {
+					if(!firstTime){
+						return;
+					}
+					if(gravSpeed>-0.75){
+						jumpAccel=2;
+					}
+					firstTime=false;
+					return;
+				}
+				if (event.keyCode == 37) {
+					if(inventory.length>0){
+						playerMap.forEach(pl => {
+							block=new Tile(Math.floor(pl.positionReal.x/tileSize)-1, Math.floor(pl.positionReal.y/tileSize), inventory[selected].type, inventory[selected].color, tileSize, tileSize);
+							block.freeplace(pl.positionReal.x-3-tileSize, pl.positionReal.y);
+							inventory.splice(selected, 1);
+							if(selected!=0){
+								selected-=1;
+							}
+						});
+					}
+					return;
+				}
+				if (event.keyCode == 38) {
+					if(inventory.length>0){
+						playerMap.forEach(pl => {
+							block=new Tile(Math.floor(pl.positionReal.x), Math.floor(pl.positionReal.y)-1, inventory[selected].type, inventory[selected].color, tileSize, tileSize);
+							block.freeplace(pl.positionReal.x, pl.positionReal.y-3-tileSize);
+							inventory.splice(selected, 1);
+							if(selected!=0){
+								selected-=1;
+							}
+						});
+					}
+					return;
+				}
+				if (event.keyCode == 39) {
+					if(inventory.length>0){
+						playerMap.forEach(pl => {
+							block=new Tile(Math.floor(pl.positionReal.x+pl.width)+1, Math.floor(pl.positionReal.y), inventory[selected].type, inventory[selected].color, tileSize, tileSize);
+							block.freeplace(pl.positionReal.x+3+pl.width, pl.positionReal.y);
+							inventory.splice(selected, 1);
+							if(selected!=0){
+								selected-=1;
+							}
+						});
+					}
+					return;
+				}
+				if (event.keyCode == 40) {
+					if(inventory.length>0){
+						playerMap.forEach(pl => {
+							block=new Tile(Math.floor(pl.positionReal.x/tileSize), Math.floor(pl.positionReal.y+pl.height/tileSize)+1, inventory[selected].type, inventory[selected].color, tileSize, tileSize);
+							block.freeplace(pl.positionReal.x, pl.positionReal.y+3+pl.height);
+							inventory.splice(selected, 1);
+							if(selected!=0){
+								selected-=1;
+							}
+						});
+					}
+					return;
+				}
+				if (event.code === 'KeyE') {
+					if(inventory[selected+1]!=undefined){
+						selected+=1;
+					}
+					return;
+				}
+				if (event.code === 'KeyQ') {
+					if(inventory[selected-1]!=undefined){
+						selected-=1;
+					}
+					return;
+				}
+				if (event.code === 'Escape'){
+					clearInterval(gameThread);
+				}
+			});
+			window.addEventListener("keyup", (event) => {
+				if (event.code === 'KeyD') {
+					xmovP=0;
+					return;
+				}
+				if (event.code === 'KeyA') {
+					xmovM=0;
+					return;
+				}
+				if (event.code === 'Space') {
+					firstTime=true;
+					return;
+				}
+			});
+
+			//VARIABLES
+			var xmovP = 0;
+			var xmovM = 0;
+			var ymov = 0;
+
+			var gravSpeed=0;
+			var firstTime=true;
+			var jumpAccel=2;
+			var inventory=[];
+			var selected=0;
+
+			//RUNTIME
+			gameThread=setInterval(game, delayFrames);
+		</script>
+	</body>
+</html>
