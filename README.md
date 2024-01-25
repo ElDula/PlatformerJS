@@ -1,4 +1,4 @@
-# PlatformerJS
+# PlatformerJS - WIP
 ·  JS_Project_PlatformerTileMaker-PabloDulla.html:
     Creador de mapas. Click izquierdo es colocar casilla, click derecho es borrar casilla y boton de la rueda es colocar objeto.
     
